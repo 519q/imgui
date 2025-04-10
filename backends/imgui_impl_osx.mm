@@ -418,7 +418,7 @@ bool ImGui_ImplOSX_Init(NSView* view)
     bd->Observer = [ImGuiObserver new];
     bd->Window = view.window ?: NSApp.orderedWindows.firstObject;
     ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-    main_viewport->PlatformHandle = main_viewport->PlatformHandleRaw = (__bridge_retained void*)bd->Window;
+    main_viewport->PlatformHandle = main_viewport->PlatformHandleRaw = (__bridge void*)bd->Window;
 
     // Load cursors. Some of them are undocumented.
     bd->MouseCursorHidden = false;
@@ -789,7 +789,7 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view)
                     return io.WantCaptureKeyboard;
             }
 
-            NSEventModifierFlags modifier_flags = [event modifierFlags];
+//            NSEventModifierFlags modifier_flags = [event modifierFlags];
             io.AddKeyEvent(key, (modifier_flags & mask) != 0);
             io.SetKeyEventNativeData(key, key_code, -1); // To support legacy indexing (<1.87 user code)
         }
