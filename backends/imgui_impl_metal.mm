@@ -90,7 +90,6 @@
     renderPipelineStateForFramebufferDescriptor:
         (FramebufferDescriptor *)descriptor
                                          device:(id<MTLDevice>)device;
-- (void)cleanupBufferCache;
 @end
 
 struct ImGui_ImplMetal_Data {
@@ -413,10 +412,7 @@ void ImGui_ImplMetal_RenderDrawData(
   }
 
   MetalContext *sharedMetalContext = bd->SharedMetalContext;
-  static int frameCount = 0;
-  if (++frameCount % 60 == 0) {
-    [sharedMetalContext cleanupBufferCache];
-  }
+
   [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
     dispatch_async(dispatch_get_main_queue(), ^{
       @synchronized(sharedMetalContext.bufferCache) {
@@ -563,28 +559,6 @@ void ImGui_ImplMetal_DestroyDeviceObjects() {
     _lastBufferCachePurge = GetMachAbsoluteTimeInSeconds();
   }
   return self;
-}
-// Add this method to clear old buffers
-- (void)cleanupBufferCache {
-  NSTimeInterval now = GetMachAbsoluteTimeInSeconds();
-  NSTimeInterval maxAge = 1.0; // 1 second, adjust as needed
-
-  @synchronized(self.bufferCache) {
-    for (NSInteger i = self.bufferCache.count - 1; i >= 0; i--) {
-      MetalBuffer *buffer = self.bufferCache[i];
-      if (now - buffer.lastReuseTime > maxAge) {
-        [self.bufferCache removeObjectAtIndex:i];
-      }
-    }
-
-    // Also cap the cache size
-    NSUInteger maxCacheSize = 30; // Adjust as needed
-    if (self.bufferCache.count > maxCacheSize) {
-      [self.bufferCache
-          removeObjectsInRange:NSMakeRange(0, self.bufferCache.count -
-                                                  maxCacheSize)];
-    }
-  }
 }
 
 - (MetalBuffer *)dequeueReusableBufferOfLength:(NSUInteger)length
