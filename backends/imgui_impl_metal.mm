@@ -90,6 +90,7 @@
     renderPipelineStateForFramebufferDescriptor:
         (FramebufferDescriptor *)descriptor
                                          device:(id<MTLDevice>)device;
+- (void)cleanupBufferCache;
 @end
 
 struct ImGui_ImplMetal_Data {
@@ -187,6 +188,9 @@ void ImGui_ImplMetal_NewFrame(MTLRenderPassDescriptor *renderPassDescriptor) {
   bd->SharedMetalContext.framebufferDescriptor = [[[FramebufferDescriptor alloc]
       initWithRenderPassDescriptor:renderPassDescriptor] autorelease];
 #else
+  if (bd->SharedMetalContext.framebufferDescriptor) {
+    CFRelease((__bridge CFTypeRef)bd->SharedMetalContext.framebufferDescriptor);
+  }
   bd->SharedMetalContext.framebufferDescriptor = [[FramebufferDescriptor alloc]
       initWithRenderPassDescriptor:renderPassDescriptor];
 #endif
@@ -275,13 +279,43 @@ void ImGui_ImplMetal_RenderDrawData(
       (size_t)drawData->TotalVtxCount * sizeof(ImDrawVert);
   size_t indexBufferLength =
       (size_t)drawData->TotalIdxCount * sizeof(ImDrawIdx);
-  MetalBuffer *vertexBuffer =
-      [ctx dequeueReusableBufferOfLength:vertexBufferLength
-                                  device:commandBuffer.device];
-  MetalBuffer *indexBuffer =
-      [ctx dequeueReusableBufferOfLength:indexBufferLength
-                                  device:commandBuffer.device];
+  MetalBuffer *vertexBuffer = nil;
+  MetalBuffer *indexBuffer = nil;
 
+  @synchronized(ctx.bufferCache) {
+    // Find suitable buffers in the cache
+
+    for (NSInteger i = ctx.bufferCache.count - 1; i >= 0; i--) {
+      MetalBuffer *buffer = ctx.bufferCache[i];
+
+      // If buffer is large enough for vertex data and not yet assigned
+      if (!vertexBuffer && buffer.buffer.length >= vertexBufferLength) {
+        vertexBuffer = buffer;
+        [ctx.bufferCache removeObjectAtIndex:i];
+        continue;
+      }
+
+      // If buffer is large enough for index data and not yet assigned
+      if (!indexBuffer && buffer.buffer.length >= indexBufferLength) {
+        indexBuffer = buffer;
+        [ctx.bufferCache removeObjectAtIndex:i];
+      }
+
+      // If we found both buffers, break
+      if (vertexBuffer && indexBuffer)
+        break;
+    }
+  }
+  if (!vertexBuffer) {
+    /* MetalBuffer * */ vertexBuffer =
+        [ctx dequeueReusableBufferOfLength:vertexBufferLength
+                                    device:commandBuffer.device];
+  }
+  if (!indexBuffer) {
+    /* MetalBuffer * */ indexBuffer =
+        [ctx dequeueReusableBufferOfLength:indexBufferLength
+                                    device:commandBuffer.device];
+  }
   ImGui_ImplMetal_SetupRenderState(drawData, commandBuffer, commandEncoder,
                                    renderPipelineState, vertexBuffer, 0);
 
@@ -379,6 +413,10 @@ void ImGui_ImplMetal_RenderDrawData(
   }
 
   MetalContext *sharedMetalContext = bd->SharedMetalContext;
+  static int frameCount = 0;
+  if (++frameCount % 60 == 0) {
+    [sharedMetalContext cleanupBufferCache];
+  }
   [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
     dispatch_async(dispatch_get_main_queue(), ^{
       @synchronized(sharedMetalContext.bufferCache) {
@@ -525,6 +563,28 @@ void ImGui_ImplMetal_DestroyDeviceObjects() {
     _lastBufferCachePurge = GetMachAbsoluteTimeInSeconds();
   }
   return self;
+}
+// Add this method to clear old buffers
+- (void)cleanupBufferCache {
+  NSTimeInterval now = GetMachAbsoluteTimeInSeconds();
+  NSTimeInterval maxAge = 1.0; // 1 second, adjust as needed
+
+  @synchronized(self.bufferCache) {
+    for (NSInteger i = self.bufferCache.count - 1; i >= 0; i--) {
+      MetalBuffer *buffer = self.bufferCache[i];
+      if (now - buffer.lastReuseTime > maxAge) {
+        [self.bufferCache removeObjectAtIndex:i];
+      }
+    }
+
+    // Also cap the cache size
+    NSUInteger maxCacheSize = 30; // Adjust as needed
+    if (self.bufferCache.count > maxCacheSize) {
+      [self.bufferCache
+          removeObjectsInRange:NSMakeRange(0, self.bufferCache.count -
+                                                  maxCacheSize)];
+    }
+  }
 }
 
 - (MetalBuffer *)dequeueReusableBufferOfLength:(NSUInteger)length
