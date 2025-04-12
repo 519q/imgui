@@ -789,7 +789,7 @@ static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view)
                     return io.WantCaptureKeyboard;
             }
             // Declaration shadows a local variable
-            // NSEventModifierFlags modifier_flags = [event modifierFlags];
+            modifier_flags = [event modifierFlags];
             io.AddKeyEvent(key, (modifier_flags & mask) != 0);
             io.SetKeyEventNativeData(key, key_code, -1); // To support legacy indexing (<1.87 user code)
         }
