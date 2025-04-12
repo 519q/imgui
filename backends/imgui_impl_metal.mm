@@ -162,7 +162,7 @@ void ImGui_ImplMetal_NewFrame(MTLRenderPassDescriptor* renderPassDescriptor)
 #ifdef IMGUI_IMPL_METAL_CPP
     bd->SharedMetalContext.framebufferDescriptor = [[[FramebufferDescriptor alloc] initWithRenderPassDescriptor:renderPassDescriptor]autorelease];
 #else
-  // if no objc
+  // if no ARC
   if (!__has_feature(objc_arc)) {
     // check for existing framebufferDescriptor, destroy if there is one
     if (bd->SharedMetalContext.framebufferDescriptor) {
@@ -248,7 +248,7 @@ void ImGui_ImplMetal_RenderDrawData(ImDrawData* drawData, id<MTLCommandBuffer> c
     size_t indexBufferLength = (size_t)drawData->TotalIdxCount * sizeof(ImDrawIdx);
     MetalBuffer *vertexBuffer = nil;
     MetalBuffer *indexBuffer = nil;
-    // if objc do what did before
+    // if ARC do what did before
     if (__has_feature(objc_arc)) {
       vertexBuffer = [ctx dequeueReusableBufferOfLength:vertexBufferLength
                                                  device:commandBuffer.device];
